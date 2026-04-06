@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: "terraform"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "03:21"
+      timezone: "Australia/Sydney"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "04:32"
+      timezone: "Australia/Sydney"
+    open-pull-requests-limit: 5

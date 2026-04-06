@@ -1,0 +1,42 @@
+name: Check Terraform
+
+on: 
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tflint:
+    runs-on: ubuntu-latest
+
+    name: Lint Terraform
+
+    steps:
+      - name: Check out code
+        id: checkout
+        uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        id: load-plugins
+        name: Cache Plugins
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ hashFiles('.tflint.hcl') }}
+
+      - name: Setup TFLint
+        id: setup-tflint
+        uses: terraform-linters/setup-tflint@b480b8fcdaa6f2c577f8e4fa799e89e756bb7c93 # v6.2.2
+        env:
+            GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tflint_version: v0.61.0
+
+      - name: Install Plugins
+        id: tflint-plugins
+        run: tflint --init
+
+      - name: Lint
+        id: tflint
+        run: tflint

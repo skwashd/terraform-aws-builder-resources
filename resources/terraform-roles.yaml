@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: 'Manage the Terraform deployment role assumed by CI/CD pipeline role.'
+
+Parameters:
+  BuilderAccountId:
+    Type: String
+    Description: 'The account ID of the account where the Terraform Planner and Deployer roles are assumed from.'
+  
+  ResourcePrefix:
+    Type: String
+    Description: 'The prefix to use for resources created by the Terraform Planner and Deployer roles. This is used to ensure that the roles can only access resources created by the Terraform Planner and Deployer roles.'
+    
+  SessionId:
+    Type: String
+    Description: 'The session name to use when assuming the Terraform Planner and Deployer roles. This is used to ensure that the roles can only be assumed by the approved CI/CD workflows.'
+
+Resources:
+  IAMPolicyTerraformPlannerExtra:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: 'TerraformPlannerExtra'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'kms:Decrypt'
+            Resource: '*'
+            Condition:
+              "ForAnyValue:StringLike":
+                # Need to ensure any other keys have a different prefix on the alias
+                'kms:ResourceAliases': !Sub 'alias/${ResourcePrefix}-*'
+          - Effect: Allow
+            Action:
+              - 'secretsmanager:GetRandomPassword'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'secretsmanager:GetSecretValue'
+            Resource:
+              - !Sub 'arn:aws:secretsmanager:*:${AWS::AccountId}:secret:db-${ResourcePrefix}-*-user*'
+
+  CrossAccountReadOnlyRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'TerraformPlanner'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
+        - !Ref IAMPolicyTerraformPlannerExtra
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Action: 'sts:AssumeRole'
+          Principal:
+            AWS:
+              - !Sub 'arn:aws:sts::${BuilderAccountId}:assumed-role/TerraformPlanner-${AWS::AccountId}/${SessionId}'
+
+
+  CrossAccountAdminRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'TerraformDeployer'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Action: 'sts:AssumeRole'
+          Principal:
+            AWS:
+              - !Sub 'arn:aws:sts::${BuilderAccountId}:assumed-role/TerraformDeployer-${AWS::AccountId}/${SessionId}'
+
