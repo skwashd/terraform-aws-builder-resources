@@ -40,6 +40,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
       sse_algorithm     = "aws:kms"
       kms_master_key_id = aws_kms_key.s3_state.arn
     }
+
+    blocked_encryption_types = [
+      "NONE"
+    ]
   }
 }
 
