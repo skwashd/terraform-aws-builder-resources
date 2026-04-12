@@ -21,10 +21,22 @@ data "aws_iam_policy_document" "bitbucket_deployer_assume_role" {
       values   = ["${each.value.repo}:*"]
     }
 
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_provider_host}:branchName"
-      values   = [each.value.branch]
+    dynamic "condition" {
+      for_each = each.value.branch != null ? [1] : []
+      content {
+        test     = "StringEquals"
+        variable = "${local.oidc_provider_host}:branchName"
+        values   = [each.value.branch]
+      }
+    }
+
+    dynamic "condition" {
+      for_each = each.value.env != null ? [1] : []
+      content {
+        test     = "StringEquals"
+        variable = "${local.oidc_provider_host}:deploymentEnvironmentUuid"
+        values   = [each.value.env]
+      }
     }
   }
 
