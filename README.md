@@ -247,6 +247,7 @@ No modules.
 | <a name="input_additional_trust_principal_arns"></a> [additional\_trust\_principal\_arns](#input\_additional\_trust\_principal\_arns) | IAM principal ARNs allowed to assume the deployer and planner roles (e.g. for testing before pipeline OIDC is configured) | `list(string)` | `[]` | no |
 | <a name="input_logging_bucket"></a> [logging\_bucket](#input\_logging\_bucket) | Name of an existing S3 bucket for access logging. If not set, logging is disabled. | `string` | `null` | no |
 | <a name="input_namespace"></a> [namespace](#input\_namespace) | Platform namespace (GitHub org, GitLab group, Bitbucket workspace UUID) | `string` | `""` | no |
+| <a name="input_override_provider_config"></a> [override\_provider\_config](#input\_override\_provider\_config) | Override OIDC provider configuration. Needed for BitBucket audience and for custom OIDC providers. | <pre>object({<br/>    oidc_provider_url = optional(string)<br/>    oidc_audience     = optional(string)<br/>    oidc_thumbprints  = optional(list(string))<br/>  })</pre> | `{}` | no |
 | <a name="input_platform"></a> [platform](#input\_platform) | CI/CD platform: github, gitlab, bitbucket, or none | `string` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | n/a | yes |
 

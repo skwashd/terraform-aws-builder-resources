@@ -67,6 +67,17 @@ variable "logging_bucket" {
   default     = null
 }
 
+variable "override_provider_config" {
+  type = object({
+    oidc_provider_url = optional(string)
+    oidc_audience     = optional(string)
+    oidc_thumbprints  = optional(list(string))
+  })
+
+  description = "Override OIDC provider configuration. Needed for BitBucket audience and for custom OIDC providers."
+  default     = {}
+}
+
 variable "tags" {
   description = "A map of tags to add to all resources"
   type        = map(string)
@@ -75,19 +86,19 @@ variable "tags" {
 locals {
   account_ids = toset(keys(var.account_repo_map))
 
-  oidc_provider_url = var.platform != "none" ? {
+  oidc_provider_url = var.platform != "none" ? var.override_provider_config.oidc_provider_url != null ? var.override_provider_config.oidc_provider_url : {
     github    = "https://token.actions.githubusercontent.com"
     gitlab    = "https://gitlab.com"
     bitbucket = "https://api.bitbucket.org/2.0/workspaces/${var.namespace}/pipelines-config/identity/oidc"
   }[var.platform] : null
 
-  oidc_audience = var.platform != "none" ? {
+  oidc_audience = var.platform != "none" ? var.override_provider_config.oidc_audience != null ? var.override_provider_config.oidc_audience : {
     github    = "sts.amazonaws.com"
     gitlab    = "sts.amazonaws.com"
     bitbucket = "ari:cloud:bitbucket::workspace/${var.namespace}"
   }[var.platform] : null
 
-  oidc_thumbprints = var.platform != "none" ? {
+  oidc_thumbprints = var.platform != "none" ? var.override_provider_config.oidc_thumbprints != null ? var.override_provider_config.oidc_thumbprints : {
     github    = ["6938fd4d98bab03faadb97b34396831e3780aea1", "1c58a3a8518e8759bf075b76b750d4f2df264fcd"]
     gitlab    = []
     bitbucket = ["a031c46782e6e6c662c2c87c76da9aa62ccabd8e"]
