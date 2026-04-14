@@ -18,7 +18,7 @@ data "aws_iam_policy_document" "bitbucket_deployer_assume_role" {
     condition {
       test     = "StringLike"
       variable = "${local.oidc_provider_host}:sub"
-      values   = ["${each.value.repo}:*"]
+      values   = [each.value.env != null ? "{${each.value.repo}}:{${each.value.env}}:*" : "{${each.value.repo}}:*"]
     }
 
     dynamic "condition" {
@@ -27,15 +27,6 @@ data "aws_iam_policy_document" "bitbucket_deployer_assume_role" {
         test     = "StringEquals"
         variable = "${local.oidc_provider_host}:branchName"
         values   = [each.value.branch]
-      }
-    }
-
-    dynamic "condition" {
-      for_each = each.value.env != null ? [1] : []
-      content {
-        test     = "StringEquals"
-        variable = "${local.oidc_provider_host}:deploymentEnvironmentUuid"
-        values   = [each.value.env]
       }
     }
   }
@@ -72,7 +63,7 @@ data "aws_iam_policy_document" "bitbucket_planner_assume_role" {
     condition {
       test     = "StringLike"
       variable = "${local.oidc_provider_host}:sub"
-      values   = ["${each.value.repo}:*"]
+      values   = ["{${each.value.repo}}:*"]
     }
   }
 
