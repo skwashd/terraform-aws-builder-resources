@@ -37,7 +37,7 @@ data "aws_iam_policy_document" "deployer" {
     ]
 
     resources = concat(
-      ["arn:aws:iam::${each.key}:role/TerraformDeployer"],
+      length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformDeployer"] : [],
       each.value.deployer_role_arns,
       var.additional_deployer_role_arns,
     )
@@ -119,7 +119,7 @@ data "aws_iam_policy_document" "planner" {
     ]
 
     resources = concat(
-      ["arn:aws:iam::${each.key}:role/TerraformPlanner"],
+      length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformPlanner"] : [],
       each.value.planner_role_arns,
       var.additional_planner_role_arns,
     )
