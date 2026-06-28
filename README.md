@@ -3,20 +3,22 @@
 A Terraform module that sets up the AWS infrastructure needed for CI/CD pipelines to manage Terraform state in a common account. It creates:
 
 - An OIDC identity provider for your CI/CD platform
-- IAM deployer and planner roles (one pair per target AWS account)
-- A KMS-encrypted S3 bucket for storing Terraform state
+- IAM deployer and planner roles (one pair per entry in `account_repo_map`)
+- A KMS-encrypted S3 bucket for storing Terraform state, usable as a backend for AWS and non-AWS providers alike
 - Bucket and key policies scoped to the created roles
 
 Supports GitHub Actions, GitLab CI/CD, and Bitbucket Pipelines.
 
 ## How it works
 
-The module runs in a central "builder" AWS account. For each target account in `account_repo_map`, it creates two IAM roles:
+The module runs in a central "builder" AWS account. For each entry in `account_repo_map`, it creates two IAM roles:
 
-- **Deployer** (`TerraformDeployer-{account_id}`) -- can assume `TerraformDeployer` in the target account, and has read/write access to that account's state file in S3. The OIDC trust policy restricts this role to a specific branch or environment.
-- **Planner** (`TerraformPlanner-{account_id}`) -- can assume `TerraformPlanner` in the target account, and has read-only access to the state file. The OIDC trust policy allows any ref from the repository (so plan runs work on PRs).
+- **Deployer** (`TerraformDeployer-{key}`) -- has read/write access to that entry's state file in S3. When the key is a 12-digit AWS account ID it can also assume `TerraformDeployer` in that target account. The OIDC trust policy restricts this role to a specific branch or environment.
+- **Planner** (`TerraformPlanner-{key}`) -- has read-only access to the state file. When the key is a 12-digit AWS account ID it can also assume `TerraformPlanner` in that target account. The OIDC trust policy allows any ref from the repository (so plan runs work on PRs).
 
-Your CI/CD pipeline authenticates via OIDC (no long-lived credentials), assumes the appropriate builder role, then assumes the target account role to run Terraform.
+When the map key is a 12-digit AWS account ID the roles get the standard cross-account assume-role permission. When the key is any other string (e.g. `cloudflare`) the cross-account assume-role statement is omitted -- the roles only get read/write (deployer) or read (planner) access to the state object in S3, making it straightforward to manage state for non-AWS providers using the same bucket.
+
+Your CI/CD pipeline authenticates via OIDC (no long-lived credentials), assumes the appropriate builder role, then assumes the target account role to run Terraform (or passes provider credentials directly for non-AWS providers).
 
 ## Usage
 
@@ -102,6 +104,52 @@ module "builder" {
 
 The deployer trust policy matches the repository UUID in the `sub` claim and the branch in the `branchName` claim.
 
+### Non-AWS backends
+
+You can use the same state bucket as a Terraform backend for non-AWS providers (such as Cloudflare, Fastly, or Datadog) by using a descriptive string as the map key instead of an AWS account ID.
+
+```hcl
+module "builder" {
+  source = "git::https://github.com/your-org/terraform-aws-builder-resources.git?ref=v1.0.0"
+
+  platform  = "github"
+  namespace = "your-github-org"
+
+  account_repo_map = {
+    "111111111111" = {
+      repo   = "infra-aws-production"
+      branch = "main"
+    }
+    "cloudflare" = {
+      repo   = "infra-cloudflare"
+      branch = "main"
+    }
+  }
+
+  tags = {
+    ManagedBy = "terraform"
+  }
+}
+```
+
+For the `cloudflare` entry this creates `TerraformDeployer-cloudflare` and `TerraformPlanner-cloudflare` IAM roles with S3 and KMS access to the state object but **no** `sts:AssumeRole` permission for a target AWS account.
+
+Configure the Terraform backend in the non-AWS repo using the `state_bucket` module output:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket               = "<state_bucket output>"
+    key                  = "acct-cloudflare/state"
+    dynamodb_table       = ""          # state locking uses the .tflock object, not DynamoDB
+    region               = "us-east-1" # region where the builder account is deployed
+    encrypt              = true
+  }
+}
+```
+
+The state lock object is stored alongside the state at `acct-cloudflare/state.tflock`. Provider credentials (e.g. a Cloudflare API token) are supplied to the pipeline separately -- this module only manages state-bucket access.
+
 ## Additional role ARNs
 
 Each deployer/planner role automatically gets permission to assume `TerraformDeployer` or `TerraformPlanner` in its target account. If your pipeline also needs to assume roles in other accounts (for example, reading SSM parameters from a shared services account), you can add those ARNs at two levels:
@@ -139,7 +187,7 @@ module "builder" {
 
 ## Outputs
 
-The `account_roles` output is a map keyed by account ID. Each value contains:
+The `account_roles` output is a map keyed by the `account_repo_map` key (an AWS account ID, or the descriptive string used for a non-AWS backend). Each value contains:
 
 | Key | Description |
 |-----|-------------|
@@ -188,14 +236,14 @@ With `--auto-deployment Enabled=true`, accounts added to the Organization later 
 ## Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.10.0, <2.0.0 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.37.0, < 7.0.0 |
 
 ## Providers
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="provider_aws"></a> [aws](#provider\_aws) | 6.38.0 |
 
 ## Modules
@@ -205,7 +253,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-|------|------|
+| ---- | ---- |
 | [aws_iam_openid_connect_provider.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_openid_connect_provider) | resource |
 | [aws_iam_policy.deployer](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.planner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
@@ -240,7 +288,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_account_repo_map"></a> [account\_repo\_map](#input\_account\_repo\_map) | A map of account IDs to repository configuration | <pre>map(object({<br/>    repo               = optional(string)<br/>    branch             = optional(string)<br/>    env                = optional(string)<br/>    deployer_role_arns = optional(list(string), [])<br/>    planner_role_arns  = optional(list(string), [])<br/>  }))</pre> | n/a | yes |
 | <a name="input_additional_deployer_role_arns"></a> [additional\_deployer\_role\_arns](#input\_additional\_deployer\_role\_arns) | Additional role ARNs all deployer roles can assume | `list(string)` | `[]` | no |
 | <a name="input_additional_planner_role_arns"></a> [additional\_planner\_role\_arns](#input\_additional\_planner\_role\_arns) | Additional role ARNs all planner roles can assume | `list(string)` | `[]` | no |
@@ -254,7 +302,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | <a name="output_account_roles"></a> [account\_roles](#output\_account\_roles) | A map of account IDs to the associated role ARNs and repo details |
 | <a name="output_state_bucket"></a> [state\_bucket](#output\_state\_bucket) | The name of the S3 bucket used for Terraform state storage |
 <!-- END_TF_DOCS -->
