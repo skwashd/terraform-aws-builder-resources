@@ -31,16 +31,25 @@ moved {
 data "aws_iam_policy_document" "deployer" {
   for_each = var.account_repo_map
 
-  statement {
-    actions = [
-      "sts:AssumeRole",
-    ]
+  dynamic "statement" {
+    for_each = length(
+      concat(
+        length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformDeployer"] : [],
+        each.value.deployer_role_arns,
+        var.additional_deployer_role_arns,
+      )
+    ) > 0 ? [1] : []
+    content {
+      actions = [
+        "sts:AssumeRole",
+      ]
 
-    resources = concat(
-      length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformDeployer"] : [],
-      each.value.deployer_role_arns,
-      var.additional_deployer_role_arns,
-    )
+      resources = concat(
+        length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformDeployer"] : [],
+        each.value.deployer_role_arns,
+        var.additional_deployer_role_arns,
+      )
+    }
   }
 
   statement {
@@ -113,16 +122,25 @@ resource "aws_iam_role_policy_attachment" "deployer" {
 data "aws_iam_policy_document" "planner" {
   for_each = var.account_repo_map
 
-  statement {
-    actions = [
-      "sts:AssumeRole",
-    ]
+  dynamic "statement" {
+    for_each = length(
+      concat(
+        length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformPlanner"] : [],
+        each.value.planner_role_arns,
+        var.additional_planner_role_arns,
+      )
+    ) > 0 ? [1] : []
+    content {
+      actions = [
+        "sts:AssumeRole",
+      ]
 
-    resources = concat(
-      length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformPlanner"] : [],
-      each.value.planner_role_arns,
-      var.additional_planner_role_arns,
-    )
+      resources = concat(
+        length(regexall("^[0-9]{12}$", each.key)) == 1 ? ["arn:aws:iam::${each.key}:role/TerraformPlanner"] : [],
+        each.value.planner_role_arns,
+        var.additional_planner_role_arns,
+      )
+    }
   }
 
   statement {
