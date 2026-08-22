@@ -24,6 +24,7 @@ variable "account_repo_map" {
 
   type = map(object({
     repo               = optional(string)
+    repo_id            = optional(string, "*")
     branch             = optional(string)
     env                = optional(string)
     deployer_role_arns = optional(list(string), [])
@@ -31,10 +32,77 @@ variable "account_repo_map" {
   }))
 
   validation {
-    condition = alltrue([
-      for k, v in var.account_repo_map : v.repo != null ? (v.branch != null || v.env != null) : true
+    condition = var.platform == "none" || alltrue([
+      for k, v in var.account_repo_map : v.repo != null
     ])
-    error_message = "Each entry must set at least one of branch or env when repo is set."
+    error_message = "Each entry must set repo when platform is not none."
+  }
+
+  validation {
+    condition = var.platform != "gitlab" || alltrue([
+      for k, v in var.account_repo_map : v.branch != null
+    ])
+    error_message = "Each entry must set branch when platform is gitlab."
+  }
+
+  validation {
+    condition = var.platform == "none" || alltrue([
+      for k, v in var.account_repo_map : v.branch != null || v.env != null
+    ])
+    error_message = "Each entry must set at least one of branch or env."
+  }
+
+  validation {
+    condition = alltrue([
+      for k, v in var.account_repo_map : v.repo_id == "*" || can(regex("^[1-9][0-9]*$", v.repo_id))
+    ])
+    error_message = "Each repo_id must be the numeric GitHub repository ID, with no leading zero, or \"*\"."
+  }
+
+  validation {
+    condition = var.platform == "github" || alltrue([
+      for k, v in var.account_repo_map : v.repo_id == "*"
+    ])
+    error_message = "repo_id is only supported when platform is github."
+  }
+
+  validation {
+    condition = var.platform != "github" || !var.immutable_subs_only || alltrue([
+      for k, v in var.account_repo_map : v.repo_id != "*"
+    ])
+    error_message = "Each repo_id must be set to the numeric GitHub repository ID when immutable_subs_only is true."
+  }
+}
+
+variable "namespace_id" {
+  type        = string
+  description = "Numeric GitHub organisation or user ID. Used in the immutable OIDC subject claim and as the repository_owner_id trust condition. Defaults to \"*\", which matches any owner ID and omits the repository_owner_id condition. GitHub only."
+  default     = "*"
+
+  validation {
+    condition     = var.namespace_id == "*" || can(regex("^[1-9][0-9]*$", var.namespace_id))
+    error_message = "namespace_id must be the numeric GitHub owner ID, with no leading zero, or \"*\"."
+  }
+
+  validation {
+    condition     = var.namespace_id == "*" || var.platform == "github"
+    error_message = "namespace_id is only supported when platform is github."
+  }
+
+  validation {
+    condition     = !var.immutable_subs_only || var.namespace_id != "*"
+    error_message = "namespace_id must be set to the numeric GitHub owner ID when immutable_subs_only is true."
+  }
+}
+
+variable "immutable_subs_only" {
+  type        = bool
+  description = "Only trust GitHub's immutable OIDC subject claim format. Leave false while any repository in account_repo_map may still emit the legacy format; the trust policy then accepts both. GitHub only."
+  default     = false
+
+  validation {
+    condition     = !var.immutable_subs_only || var.platform == "github"
+    error_message = "immutable_subs_only is only supported when platform is github."
   }
 }
 
