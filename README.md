@@ -50,7 +50,44 @@ module "builder" {
 }
 ```
 
-When `env` is set, the deployer trust policy matches `repo:your-github-org/infra-production:environment:production`. When `branch` is set, it matches `repo:your-github-org/infra-staging:ref:refs/heads/main`.
+When `env` is set, the deployer trust policy matches `repo:your-github-org/infra-production:environment:production`. When `branch` is set, it matches `repo:your-github-org/infra-staging:ref:refs/heads/main`. By default the policy also matches the equivalent [immutable subject claim](#immutable-subject-claims) with a wildcarded owner and repository ID, and always requires the `repository` claim to match -- see below.
+
+#### Immutable subject claims
+
+GitHub is rolling out an [immutable subject claim format](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims) for Actions OIDC tokens that embeds the numeric GitHub owner and repository IDs, e.g. `repo:your-github-org@123456/infra-production@456789:environment:production` instead of `repo:your-github-org/infra-production:environment:production`. This matters even if you never opt in:
+
+- Repositories **created after 2026-07-15** use the immutable format by default.
+- An existing repository that is **renamed or transferred** after that date also moves to the immutable format.
+- A repository emits exactly one format at a time, never both.
+
+By default this module's GitHub trust policies match **both** formats, with `namespace_id` and each entry's `repo_id` wildcarded (`*`) unless you set them. This means a repository can move to the immutable format at any point -- via opt-in, rename, or transfer -- without its pipeline breaking.
+
+Every GitHub trust policy also asserts a `repository` claim condition (e.g. `your-github-org/infra-production`) alongside the subject match. This claim is present in every GitHub Actions token regardless of plan tier or subject format, so it costs nothing to enable and is always on.
+
+To tighten the policy for a specific repository, set `namespace_id` (module-level, your GitHub organisation or user ID) and `repo_id` (per entry, that repository's ID):
+
+```hcl
+module "builder" {
+  # ...
+  namespace_id = "123456" # gh api orgs/your-github-org --jq .id
+
+  account_repo_map = {
+    "111111111111" = {
+      repo    = "infra-production"
+      repo_id = "456789" # gh api repos/your-github-org/infra-production --jq .id
+      env     = "production"
+    }
+  }
+}
+```
+
+Once set, `namespace_id` also anchors a `repository_owner_id` trust condition and `repo_id` anchors a `repository_id` condition -- both are immutable claims that survive a rename, and `repository_id` additionally survives the repository being deleted and recreated under the same name. While `immutable_subs_only` is `false`, leaving `repo_id` wildcarded means a delete-and-recreate keeps working with no config change; pinning it means such an event requires updating `repo_id` before the pipeline works again -- a deliberate trade-off between convenience and tightness.
+
+Once every repository using this module has moved to the immutable format, set `immutable_subs_only = true` to stop trusting the legacy subject. This requires `namespace_id` to be set (not `*`), since trusting a wildcarded immutable subject alone with no legacy fallback provides little benefit over today's format. It also requires every entry's `repo_id` to be pinned: with no legacy subject to fall back on, a wildcarded `repo_id` would trust any repository ID under that name, reopening the delete-and-recreate gap `repo_id` exists to close.
+
+GitHub Enterprise Server is not included in the immutable-subject-claim rollout -- leave `immutable_subs_only = false` if you use GHES. The `repository` claim condition above is unaffected by this and still applies: GHES tokens carry it too. If you point this module at a custom, non-GitHub OIDC issuer via `override_provider_config` (with `platform = "github"`) whose tokens don't carry a `repository` claim, every GitHub trust policy will fail to assume.
+
+**Upgrade note:** applying this module version against an existing GitHub deployment changes the `assume_role_policy` on every deployer and planner role in place (no role, policy, or OIDC provider is replaced): it adds the wildcarded immutable subject and the `repository` claim condition. Review the plan diff before applying, and confirm one pipeline run against the updated trust policy before relying on it broadly.
 
 ### GitLab CI/CD
 
@@ -198,6 +235,8 @@ The `account_roles` output is a map keyed by the `account_repo_map` key (an AWS 
 | `env` | Environment filter (if set, GitHub only) |
 | `repo` | Full repository URL (GitHub and GitLab only) |
 
+The `github_oidc_conditions` output is a map, keyed the same way, showing the subject patterns and claim conditions actually asserted by each GitHub deployer and planner trust policy -- useful for confirming what `namespace_id`/`repo_id` resolved to without reading the role's trust policy directly. Empty unless `platform` is `github`.
+
 ## Target account roles
 
 Each target AWS account needs `TerraformDeployer` and `TerraformPlanner` IAM roles that trust the builder account. This module does not create those roles -- they live in the target accounts.
@@ -244,7 +283,7 @@ With `--auto-deployment Enabled=true`, accounts added to the Organization later 
 
 | Name | Version |
 | ---- | ------- |
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.38.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.37.0, < 7.0.0 |
 
 ## Modules
 
@@ -289,12 +328,14 @@ No modules.
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| <a name="input_account_repo_map"></a> [account\_repo\_map](#input\_account\_repo\_map) | A map of account IDs to repository configuration | <pre>map(object({<br/>    repo               = optional(string)<br/>    branch             = optional(string)<br/>    env                = optional(string)<br/>    deployer_role_arns = optional(list(string), [])<br/>    planner_role_arns  = optional(list(string), [])<br/>  }))</pre> | n/a | yes |
+| <a name="input_account_repo_map"></a> [account\_repo\_map](#input\_account\_repo\_map) | A map of account IDs to repository configuration | <pre>map(object({<br/>    repo               = optional(string)<br/>    repo_id            = optional(string, "*")<br/>    branch             = optional(string)<br/>    env                = optional(string)<br/>    deployer_role_arns = optional(list(string), [])<br/>    planner_role_arns  = optional(list(string), [])<br/>  }))</pre> | n/a | yes |
 | <a name="input_additional_deployer_role_arns"></a> [additional\_deployer\_role\_arns](#input\_additional\_deployer\_role\_arns) | Additional role ARNs all deployer roles can assume | `list(string)` | `[]` | no |
 | <a name="input_additional_planner_role_arns"></a> [additional\_planner\_role\_arns](#input\_additional\_planner\_role\_arns) | Additional role ARNs all planner roles can assume | `list(string)` | `[]` | no |
 | <a name="input_additional_trust_principal_arns"></a> [additional\_trust\_principal\_arns](#input\_additional\_trust\_principal\_arns) | IAM principal ARNs allowed to assume the deployer and planner roles (e.g. for testing before pipeline OIDC is configured) | `list(string)` | `[]` | no |
+| <a name="input_immutable_subs_only"></a> [immutable\_subs\_only](#input\_immutable\_subs\_only) | Only trust GitHub's immutable OIDC subject claim format. Leave false while any repository in account\_repo\_map may still emit the legacy format; the trust policy then accepts both. GitHub only. | `bool` | `false` | no |
 | <a name="input_logging_bucket"></a> [logging\_bucket](#input\_logging\_bucket) | Name of an existing S3 bucket for access logging. If not set, logging is disabled. | `string` | `null` | no |
 | <a name="input_namespace"></a> [namespace](#input\_namespace) | Platform namespace (GitHub org, GitLab group, Bitbucket workspace UUID) | `string` | `""` | no |
+| <a name="input_namespace_id"></a> [namespace\_id](#input\_namespace\_id) | Numeric GitHub organisation or user ID. Used in the immutable OIDC subject claim and as the repository\_owner\_id trust condition. Defaults to "*", which matches any owner ID and omits the repository\_owner\_id condition. GitHub only. | `string` | `"*"` | no |
 | <a name="input_override_provider_config"></a> [override\_provider\_config](#input\_override\_provider\_config) | Override OIDC provider configuration. Needed for BitBucket audience and for custom OIDC providers. | <pre>object({<br/>    oidc_provider_url = optional(string)<br/>    oidc_audience     = optional(string)<br/>    oidc_thumbprints  = optional(list(string))<br/>  })</pre> | `{}` | no |
 | <a name="input_platform"></a> [platform](#input\_platform) | CI/CD platform: github, gitlab, bitbucket, or none | `string` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | n/a | yes |
@@ -304,5 +345,6 @@ No modules.
 | Name | Description |
 | ---- | ----------- |
 | <a name="output_account_roles"></a> [account\_roles](#output\_account\_roles) | A map of account IDs to the associated role ARNs and repo details |
+| <a name="output_github_oidc_conditions"></a> [github\_oidc\_conditions](#output\_github\_oidc\_conditions) | The subject patterns and claim conditions asserted by the GitHub deployer and planner trust policies, keyed by account\_repo\_map key. Empty unless platform is github. |
 | <a name="output_state_bucket"></a> [state\_bucket](#output\_state\_bucket) | The name of the S3 bucket used for Terraform state storage |
 <!-- END_TF_DOCS -->
