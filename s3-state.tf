@@ -29,7 +29,7 @@ resource "aws_s3_bucket_logging" "state" {
 
   bucket        = aws_s3_bucket.state.id
   target_bucket = var.logging_bucket
-  target_prefix = "/s3/${aws_s3_bucket.state.id}/"
+  target_prefix = "s3/${aws_s3_bucket.state.id}/"
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
