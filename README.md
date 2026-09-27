@@ -222,6 +222,15 @@ module "builder" {
 }
 ```
 
+The bucket name must be known at plan time. If the logging bucket is created in the same configuration, apply it on its own first, then apply everything else:
+
+```sh
+terraform apply -target=module.logging
+terraform apply
+```
+
+If Terraform rejects the targeted plan because of `moved` resources, add the `-target` options it lists.
+
 ## Outputs
 
 The `account_roles` output is a map keyed by the `account_repo_map` key (an AWS account ID, or the descriptive string used for a non-AWS backend). Each value contains:
@@ -333,7 +342,7 @@ No modules.
 | <a name="input_additional_planner_role_arns"></a> [additional\_planner\_role\_arns](#input\_additional\_planner\_role\_arns) | Additional role ARNs all planner roles can assume | `list(string)` | `[]` | no |
 | <a name="input_additional_trust_principal_arns"></a> [additional\_trust\_principal\_arns](#input\_additional\_trust\_principal\_arns) | IAM principal ARNs allowed to assume the deployer and planner roles (e.g. for testing before pipeline OIDC is configured) | `list(string)` | `[]` | no |
 | <a name="input_immutable_subs_only"></a> [immutable\_subs\_only](#input\_immutable\_subs\_only) | Only trust GitHub's immutable OIDC subject claim format. Leave false while any repository in account\_repo\_map may still emit the legacy format; the trust policy then accepts both. GitHub only. | `bool` | `false` | no |
-| <a name="input_logging_bucket"></a> [logging\_bucket](#input\_logging\_bucket) | Name of an existing S3 bucket for access logging. If not set, logging is disabled. | `string` | `null` | no |
+| <a name="input_logging_bucket"></a> [logging\_bucket](#input\_logging\_bucket) | Name of an existing S3 bucket for access logging. Must be known at plan time. If not set, logging is disabled. | `string` | `null` | no |
 | <a name="input_namespace"></a> [namespace](#input\_namespace) | Platform namespace (GitHub org, GitLab group, Bitbucket workspace UUID) | `string` | `""` | no |
 | <a name="input_namespace_id"></a> [namespace\_id](#input\_namespace\_id) | Numeric GitHub organisation or user ID. Used in the immutable OIDC subject claim and as the repository\_owner\_id trust condition. Defaults to "*", which matches any owner ID and omits the repository\_owner\_id condition. GitHub only. | `string` | `"*"` | no |
 | <a name="input_override_provider_config"></a> [override\_provider\_config](#input\_override\_provider\_config) | Override OIDC provider configuration. Needed for BitBucket audience and for custom OIDC providers. | <pre>object({<br/>    oidc_provider_url = optional(string)<br/>    oidc_audience     = optional(string)<br/>    oidc_thumbprints  = optional(list(string))<br/>  })</pre> | `{}` | no |

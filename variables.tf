@@ -131,7 +131,7 @@ variable "additional_trust_principal_arns" {
 
 variable "logging_bucket" {
   type        = string
-  description = "Name of an existing S3 bucket for access logging. If not set, logging is disabled."
+  description = "Name of an existing S3 bucket for access logging. Must be known at plan time. If not set, logging is disabled."
   default     = null
 }
 
