@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   tflint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     name: Lint Terraform
 
@@ -44,7 +44,7 @@ jobs:
         run: tflint
 
   terraform-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     name: Validate and Test Terraform
 
@@ -82,9 +82,13 @@ jobs:
         id: rm-tf
         run: rm -rf .terraform .terraform.*
 
-      - name: Check generated docs are up to date
+      - name: Generate docs
         id: docs
         uses: terraform-docs/gh-actions@6de6da0cefcc6b4b7a5cbea4d79d97060733093c # v1.4.1
         with:
           config-file: .terraform-docs.yml
-          fail-on-diff: false # Logic is busted. Skipping!
+          fail-on-diff: false
+
+      - name: Check generated docs are up to date
+        id: docs-diff
+        run: git diff --exit-code README.md
